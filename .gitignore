@@ -8,4 +8,4 @@
 /.idea
 
 # config
-config.ts
+/config.ts
