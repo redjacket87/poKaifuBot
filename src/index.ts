@@ -1,8 +1,8 @@
 import Telegraf from 'telegraf';
 import {token} from '../config';
-import { videoInitializer } from './commands/video';
+import { VideoInitializer } from './commands/video';
 
 export const bot = new Telegraf(token);
 
-videoInitializer();
+new VideoInitializer(bot).initialize();
 bot.launch();
