@@ -1,44 +1,113 @@
-import { bot } from '../../bot';
-import { VideoHashWrapper } from './video-hash';
-import { existsSync, mkdirSync, readdirSync } from 'fs';
 import * as rimraf from 'rimraf';
+import { ContextMessageUpdate } from 'telegraf';
+import * as Composer from 'telegraf/composer';
+import * as session from 'telegraf/session';
+import * as Stage from 'telegraf/stage';
+import * as Markup from 'telegraf/markup';
+import * as WizardScene from 'telegraf/scenes/wizard';
 
-export const videoInitializer = (): void => {
-  bot.on('text', async message => {
-    const { id: chatId } = message.chat;
+import { bot } from '../..';
+import { Video } from './video';
+import { existsSync, mkdirSync } from 'fs';
 
-    await bot.sendMessage(chatId, 'Давай кидай видео');
+const handleVideo = async (ctx: ContextMessageUpdate) => {
+  // @ts-ignore
+  const {id: sessionId, count: sessionCount = 1} = ctx.session;
+  const { file_id } = ctx.message.video;
+
+  const filesDir = __dirname + `/${sessionId}`;
+
+  if(!existsSync(filesDir)) {
+    mkdirSync(filesDir, '0711')
+  }
+
+  try {
+    await ctx.reply('Сохраняем файл...');
+    const fileMeta = await ctx.telegram.getFile(file_id);
+    const fileName = 'ffff.mp4';
+    const path = `https://api.telegram.org/file/bot${bot.token}/${fileMeta.file_path}`;
+    await Video.downloadVideo(path, `${filesDir}/${fileName}`);
+
+    await ctx.reply('Обрабатываем файл...');
+    const videoHash = new Video(`${filesDir}/${fileName}`);
+
+    await videoHash.setHash();
+    await ctx.reply('Отправляем файл...');
+    await ctx.replyWithVideo({source: `${filesDir}/${fileName}`});
+
+    rimraf(filesDir, async () => {
+      await ctx.reply('Пользуйся, дорогой');
+    });
+  } catch(error) {
+    const { message = 'Unknown' } = error;
+
+    await ctx.reply(`Произошла ошибка: ${message}`)
+  }
+};
+
+const superWizardLauncher = (): void => {
+  const stepHandler = new Composer();
+
+  stepHandler.action('1', async (ctx) => {
+    await ctx.reply('Кидай видео, брат');
+    return ctx.wizard.next();
   });
 
-  bot.on('video', async message => {
-    const { chat, video } = message;
-    const { file_id } = video;
+  stepHandler.action('много', async (ctx) => {
+    await ctx.reply('Введи число, брат');
+    return ctx.wizard.next();
+  });
 
-    const filesDir = __dirname + '/files';
+  const startScene = new WizardScene('start',
+      async (ctx) => {
+        ctx.session.id = new Date().toISOString();
 
-    if(!existsSync(filesDir)) {
-      mkdirSync(filesDir, '0711')
-    }
+        await ctx.reply('Сколько хочешь, брат?', Markup.inlineKeyboard([
+          Markup.callbackButton('Хочу 1 видео️', '1'),
+          Markup.callbackButton('Хочу много видео', 'много')
+        ]).extra());
+        return ctx.wizard.next()
+      },
+      stepHandler,
+      async (ctx) => {
+        const {video, text} = ctx.message;
 
-    try {
-      await bot.sendMessage(chat.id, 'Сохраняем файл...');
-      await bot.downloadFile(file_id, filesDir);
-      await bot.sendMessage(chat.id, 'Обрабатываем файл...');
+        if (video) {
+          await handleVideo(ctx);
+        } else if (!isNaN(Number(text))) {
+          ctx.session.count = text;
+          await ctx.reply('Теперь кидай видео')
+          ctx.wizard.next();
+        }
 
-      const fileName = readdirSync(filesDir)[0];
-      const videoHash = new VideoHashWrapper(`${filesDir}/${fileName}`);
+        return ctx.scene.leave();
+      },
+      async (ctx) => {
+        const {video} = ctx.message;
 
-      await videoHash.setHash();
-      await bot.sendMessage(chat.id, 'Отправляем файл...');
-      await bot.sendVideo(chat.id, `${filesDir}/${fileName}`);
+        if (video) {
+          await handleVideo(ctx);
+        }
 
-      rimraf(filesDir, async () => {
-        await bot.sendMessage(chat.id, 'Пользуйся, дорогой');
-      });
-    } catch(error) {
-      const { message = 'Unknown' } = error;
+        return ctx.scene.leave();
+      },
+  );
 
-      await bot.sendMessage(chat.id, `Произошла ошибка: ${message}`);
-    }
+  const stage = new Stage().register(startScene);
+  bot.use(session());
+  bot.use(stage.middleware());
+  // @ts-ignore
+  bot.start((ctx) => ctx.scene.enter('start'));
+};
+
+export const videoInitializer = (): void => {
+  superWizardLauncher();
+
+  bot.on('text', async ctx => {
+    await ctx.reply( 'Либо кидай видео либо введи /start');
+  });
+
+  bot.on('video', async ctx => {
+    await handleVideo(ctx);
   });
 };

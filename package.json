@@ -21,10 +21,11 @@
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.0.20",
     "@ffprobe-installer/ffprobe": "^1.0.12",
-    "@types/node-telegram-bot-api": "^0.40.2",
+    "@types/node": "^13.11.0",
     "@typescript-eslint/parser": "^2.23.0",
-    "node-telegram-bot-api": "^0.40.0",
+    "axios": "^0.19.2",
     "rimraf": "^3.0.2",
+    "telegraf": "^3.37.0",
     "video-hash": "^1.0.0"
   },
   "devDependencies": {
