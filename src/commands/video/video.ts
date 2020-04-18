@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { createWriteStream } from 'fs';
+import {createWriteStream} from 'fs';
 import * as ffmpeg from '@ffmpeg-installer/ffmpeg';
 import * as ffprobe from '@ffprobe-installer/ffprobe';
 import * as VideoHash from 'video-hash';
@@ -29,8 +29,8 @@ export class Video {
                     .on('finish', () => {
                         resolve();
                     })
-                    .on('error', () => {
-                        reject();
+                    .on('error', (e) => {
+                        reject(e);
                     })
             })
         } catch(e) {

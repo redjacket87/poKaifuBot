@@ -1,17 +1,19 @@
 import * as rimraf from 'rimraf';
-import Telegraf, { ContextMessageUpdate } from 'telegraf';
+import Telegraf from 'telegraf';
 import * as Composer from 'telegraf/composer';
 import * as session from 'telegraf/session';
 import * as Stage from 'telegraf/stage';
 import * as Markup from 'telegraf/markup';
 import * as WizardScene from 'telegraf/scenes/wizard';
+import {existsSync, mkdirSync, rename} from 'fs';
+
 import { Video } from './video';
-import { existsSync, mkdirSync, rename } from 'fs';
+import { BotContext, From } from './types';
 
 export class VideoInitializer {
-  bot: Telegraf<ContextMessageUpdate> = null;
+  bot: Telegraf<BotContext> = null;
 
-  constructor(bot: Telegraf<ContextMessageUpdate>) {
+  constructor(bot: Telegraf<BotContext>) {
     this.bot = bot;
   }
 
@@ -27,9 +29,8 @@ export class VideoInitializer {
     });
   };
 
-  private async handleVideo(ctx: ContextMessageUpdate) {
-    // @ts-ignore
-    const {count: filesCount = 1} = ctx.session;
+  private async handleVideo(ctx: BotContext) {
+    const {filesCount = 1} = ctx.session;
     const sessionId = new Date().toISOString();
     const { file_id } = ctx.message.video;
 
@@ -57,8 +58,7 @@ export class VideoInitializer {
           if ( err ) throw err;
         });
         fileName = renamedFile;
-        const videoHash = new Video(fileName);
-        await videoHash.setHash();
+        await new Video(fileName).setHash();
         await ctx.reply(`Отправляем ${i} копию...`);
         await ctx.replyWithVideo({source: fileName});
       }
@@ -77,11 +77,20 @@ export class VideoInitializer {
     const stepHandler = new Composer();
 
     stepHandler.action('1', async (ctx) => {
+      ctx.session = {...ctx.session, ...{
+          filesCount: 1,
+          from: From.Single
+      }};
+
       await ctx.reply('Кидай видео, брат');
       return ctx.wizard.next();
     });
 
     stepHandler.action('много', async (ctx) => {
+      ctx.session = {...ctx.session, ...{
+          from: From.Multiple
+        }};
+
       await ctx.reply('Введи число, брат');
       return ctx.wizard.next();
     });
@@ -98,15 +107,21 @@ export class VideoInitializer {
         async (ctx) => {
           const {video, text} = ctx.message;
 
-          if (video) {
+          if (video && ctx.session.from === From.Single) {
             await this.handleVideo(ctx);
-          } else if (!isNaN(Number(text))) {
-            ctx.session.count = Number(text);
-            await ctx.reply('Теперь кидай видео')
+            await ctx.scene.leave();
+
+            return;
+          } else if (!isNaN(Number(text)) && ctx.session.from === From.Multiple) {
+            ctx.session = {...ctx.session, filesCount: Number(text)};
+            await ctx.reply('Теперь кидай видео');
             ctx.wizard.next();
+
+            return;
           }
 
-          return ctx.scene.leave();
+          await ctx.reply('Зачем так делаешь? Если хочешь одно сразу кидай его, если много - число вводи.');
+          return ctx.scene.reenter();
         },
         async (ctx) => {
           const {video} = ctx.message;
